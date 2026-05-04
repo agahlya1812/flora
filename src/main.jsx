@@ -3,10 +3,28 @@ import { createRoot } from 'react-dom/client';
 import spiral from './assets/spirale-crop.png';
 import './styles.css';
 
+const storageKey = 'flora-todos';
+
+function readLocalTodos() {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalTodos(todos) {
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify(todos.map(({ isDraft, ...todo }) => todo)),
+  );
+}
+
 function FloraApp() {
   const [todos, setTodos] = useState([]);
   const lastTodoRef = useRef(null);
   const hasLoadedTodos = useRef(false);
+  const skipBlurCommit = useRef(new Set());
 
   useEffect(() => {
     lastTodoRef.current?.focus();
@@ -25,6 +43,7 @@ function FloraApp() {
     }
 
     loadTodos().catch((error) => {
+      setTodos(readLocalTodos());
       hasLoadedTodos.current = true;
       console.error(error);
     });
@@ -81,6 +100,9 @@ function FloraApp() {
         throw new Error('Impossible de sauvegarder le todo.');
       }
     } catch (error) {
+      writeLocalTodos(
+        todos.map((todo) => (todo.id === id ? { ...todo, ...changes } : todo)),
+      );
       console.error(error);
     }
   };
@@ -113,6 +135,16 @@ function FloraApp() {
         ),
       );
     } catch (error) {
+      setTodos((currentTodos) =>
+        currentTodos.map((todo) =>
+          todo.id === id ? { id, title, done: false, isDraft: false } : todo,
+        ),
+      );
+      writeLocalTodos(
+        todos.map((todo) =>
+          todo.id === id ? { id, title, done: false, isDraft: false } : todo,
+        ),
+      );
       console.error(error);
     }
   };
@@ -135,18 +167,12 @@ function FloraApp() {
         throw new Error('Impossible de supprimer le todo.');
       }
     } catch (error) {
+      writeLocalTodos(todos.filter((currentTodo) => currentTodo.id !== id));
       console.error(error);
-      setTodos((currentTodos) => [...currentTodos, todo]);
     }
   };
 
-  const validateTodo = (event, id) => {
-    if (event.key !== 'Enter') {
-      return;
-    }
-
-    const title = event.currentTarget.value.trim();
-
+  const commitTodo = (id, title) => {
     if (!title) {
       setTodos((currentTodos) => currentTodos.filter((todo) => todo.id !== id));
       return;
@@ -160,8 +186,26 @@ function FloraApp() {
       updateTodo(id, title);
       saveTodo(id, { title });
     }
+  };
+
+  const validateTodo = (event, id) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    skipBlurCommit.current.add(id);
+    commitTodo(id, event.currentTarget.value.trim());
 
     event.currentTarget.blur();
+  };
+
+  const commitTodoOnBlur = (event, id) => {
+    if (skipBlurCommit.current.has(id)) {
+      skipBlurCommit.current.delete(id);
+      return;
+    }
+
+    commitTodo(id, event.currentTarget.value.trim());
   };
 
   return (
@@ -193,6 +237,7 @@ function FloraApp() {
                 value={todo.title}
                 onChange={(event) => updateTodo(todo.id, event.target.value)}
                 onKeyDown={(event) => validateTodo(event, todo.id)}
+                onBlur={(event) => commitTodoOnBlur(event, todo.id)}
                 placeholder="Nouveau to do"
                 aria-label="Nom du to do"
               />
