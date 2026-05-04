@@ -227,6 +227,7 @@ async function createRemoteTodo(todo) {
       'x-api-key': config.apiKey,
     },
     body: JSON.stringify({
+      id: String(todo.id || crypto.randomUUID()),
       title: String(todo.title || '').trim(),
       done: todo.done ? 1 : 0,
       position: Number(todo.position || 0),
@@ -255,8 +256,13 @@ async function syncLocalTodosToRemote() {
 
   try {
     const remoteTodos = await fetchRemoteTodos();
-    const remoteIds = new Set((remoteTodos || []).map((todo) => todo.id));
-    const localTodos = readLocalTodosForSync().filter((todo) => !remoteIds.has(todo.id));
+    const remoteKeys = new Set(
+      (remoteTodos || []).map((todo) => `${todo.id}:${todo.title}`),
+    );
+    const remoteTitles = new Set((remoteTodos || []).map((todo) => todo.title));
+    const localTodos = readLocalTodosForSync().filter(
+      (todo) => !remoteKeys.has(`${todo.id}:${todo.title}`) && !remoteTitles.has(todo.title),
+    );
 
     for (const todo of localTodos) {
       await createRemoteTodo(todo);
