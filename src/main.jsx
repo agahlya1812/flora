@@ -4,6 +4,11 @@ import spiral from './assets/spirale-crop.png';
 import './styles.css';
 
 const storageKey = 'flora-todos';
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+function apiUrl(path) {
+  return `${apiBaseUrl}${path}`;
+}
 
 function readLocalTodos() {
   try {
@@ -32,7 +37,7 @@ function FloraApp() {
 
   useEffect(() => {
     async function loadTodos() {
-      const response = await fetch('/api/todos');
+      const response = await fetch(apiUrl('/api/todos'));
 
       if (!response.ok) {
         throw new Error('Impossible de charger les todos.');
@@ -88,7 +93,7 @@ function FloraApp() {
 
   const saveTodo = async (id, changes) => {
     try {
-      const response = await fetch(`/api/todos/${id}`, {
+      const response = await fetch(apiUrl(`/api/todos/${id}`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -111,7 +116,7 @@ function FloraApp() {
     const position = todos.findIndex((todo) => todo.id === id);
 
     try {
-      const response = await fetch('/api/todos', {
+      const response = await fetch(apiUrl('/api/todos'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -159,7 +164,7 @@ function FloraApp() {
     }
 
     try {
-      const response = await fetch(`/api/todos/${id}`, {
+      const response = await fetch(apiUrl(`/api/todos/${id}`), {
         method: 'DELETE',
       });
 

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: flora
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: DATABASE_API_KEY
+        sync: false
+      - key: DATABASE_REST_URL
+        sync: false

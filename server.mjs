@@ -7,8 +7,20 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, '.env');
 const dataDir = path.join(__dirname, 'data');
+const distDir = path.join(__dirname, 'dist');
 const databasePath = path.join(dataDir, 'flora.sqlite');
 let database;
+
+const contentTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+};
 
 async function loadEnvFile() {
   try {
@@ -350,9 +362,46 @@ async function deleteRemoteTodo(id) {
 
 function sendJson(response, statusCode, data) {
   response.writeHead(statusCode, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json; charset=utf-8',
   });
   response.end(JSON.stringify(data));
+}
+
+async function sendFile(response, filePath) {
+  const extension = path.extname(filePath);
+  const contentType = contentTypes[extension] || 'application/octet-stream';
+  const file = await readFile(filePath);
+
+  response.writeHead(200, {
+    'Content-Type': contentType,
+  });
+  response.end(file);
+}
+
+async function serveStatic(request, response) {
+  const url = new URL(request.url, 'http://localhost');
+  const decodedPath = decodeURIComponent(url.pathname);
+  const requestedPath = decodedPath === '/' ? '/index.html' : decodedPath;
+  const filePath = path.normalize(path.join(distDir, requestedPath));
+
+  if (!filePath.startsWith(distDir)) {
+    response.writeHead(403);
+    response.end('Forbidden');
+    return;
+  }
+
+  try {
+    await sendFile(response, filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+
+    await sendFile(response, path.join(distDir, 'index.html'));
+  }
 }
 
 async function readJsonBody(request) {
@@ -367,6 +416,16 @@ async function readJsonBody(request) {
 
 const server = createServer(async (request, response) => {
   try {
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      });
+      response.end();
+      return;
+    }
+
     if (request.url === '/api/todos' && request.method === 'GET') {
       try {
         sendJson(response, 200, (await fetchRemoteTodos()) ?? readTodos());
@@ -447,15 +506,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    sendJson(response, 404, { error: 'Not found.' });
+    if (request.url.startsWith('/api/')) {
+      sendJson(response, 404, { error: 'Not found.' });
+      return;
+    }
+
+    await serveStatic(request, response);
   } catch (error) {
     console.error(error);
-    sendJson(response, 500, { error: 'Internal server error.' });
+
+    if (request.url.startsWith('/api/')) {
+      sendJson(response, 500, { error: 'Internal server error.' });
+      return;
+    }
+
+    response.writeHead(500, {
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    response.end('Internal server error.');
   }
 });
 
 await loadEnvFile();
-const port = Number(process.env.API_PORT || 3001);
+const port = Number(process.env.PORT || process.env.API_PORT || 3001);
 await openDatabase();
 await syncLocalTodosToRemote();
 
@@ -466,4 +539,5 @@ server.listen(port, () => {
       ? `Remote database endpoint: ${process.env.DATABASE_REST_URL}`
       : `SQLite database: ${databasePath}`,
   );
+  console.log(`Serving app from ${distDir}`);
 });
